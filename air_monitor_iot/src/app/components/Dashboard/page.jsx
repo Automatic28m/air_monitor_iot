@@ -68,7 +68,7 @@ export default function Dashboard() {
     const [mqttClient, setMqttClient] = useState(null);
 
     useEffect(() => {
-        const client = mqtt.connect('ws://mqtt-dashboard.com:8000/mqtt');
+        const client = mqtt.connect('wss://mqtt-dashboard.com:8884/mqtt');
         setMqttClient(client);
 
         client.on('connect', () => {
