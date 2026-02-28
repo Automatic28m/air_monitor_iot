@@ -1,14 +1,28 @@
-// --- กำหนดตรรกะสำหรับ Active Low ---
-#define LED_ON  LOW   // ส่ง 0V เพื่อให้ไฟติด
-#define LED_OFF HIGH  // ส่ง 3.3V เพื่อให้ไฟดับ
+#define LED_ON LOW
+#define LED_OFF HIGH
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>  
 
-// --- ตั้งค่าพิน LED ---
-const int ledGreen = 26; 
-const int ledRed = 27;   
+const char* ssid = "Automatic iPhone";
+const char* password = "12345678";
+const char* mqtt_server = "mqtt-dashboard.com";
+const int mqtt_port = 1883;
+
+// Topics
+const char* topic_publish = "sensor/airmonitor";
+const char* topic_subscribe = "sensor/airmonitor/settings";  
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+const int ledGreen = 26;
+const int ledRed = 27;
+const int buzzerPin = 32; // <--- NEW: ประกาศพิน Buzzer
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define DHTPIN 4
@@ -24,17 +38,65 @@ int sleepTime = 9680;
 const int gasAnalogPin = 34;
 const int gasDigitalPin = 14;
 
-const int gasThreshold = 70;
+// Thresholds
+float pm25Threshold = 50.0;
+float gasThreshold = 70.0;
+float tempMax = 35.0;
+float tempMin = 18.0;  
+float humMax = 70.0;
+float humMin = 30.0;  
+
+void setup_wifi() {
+  delay(10);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+}
+
+// ฟังก์ชันรับข้อมูลจาก NextJS
+void callback(char* topic, byte* payload, unsigned int length) {
+  String message;
+  for (int i = 0; i < length; i++) message += (char)payload[i];
+
+  if (String(topic) == topic_subscribe) {
+    StaticJsonDocument<512> doc;  
+    DeserializationError error = deserializeJson(doc, message);
+
+    if (!error) {
+      if (doc.containsKey("pm25")) pm25Threshold = doc["pm25"];
+      if (doc.containsKey("gas")) gasThreshold = doc["gas"];
+      if (doc.containsKey("tempMax")) tempMax = doc["tempMax"];
+      if (doc.containsKey("tempMin")) tempMin = doc["tempMin"];
+      if (doc.containsKey("humMax")) humMax = doc["humMax"];
+      if (doc.containsKey("humMin")) humMin = doc["humMin"];
+
+      Serial.println("✅ Range Updated!");
+    }
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      client.subscribe(topic_subscribe);
+    } else {
+      delay(5000);
+    }
+  }
+}
 
 void setup() {
   Serial.begin(115200);
 
   pinMode(ledGreen, OUTPUT);
   pinMode(ledRed, OUTPUT);
+  pinMode(buzzerPin, OUTPUT); // <--- NEW: ตั้งค่าพิน Buzzer เป็น Output
   
-  // เริ่มต้นให้ไฟดับทั้งคู่
-  digitalWrite(ledGreen, LED_OFF); 
-  digitalWrite(ledRed, LED_OFF);   
+  digitalWrite(ledGreen, LED_OFF);
+  digitalWrite(ledRed, LED_OFF);
+  digitalWrite(buzzerPin, LOW); // <--- NEW: ปิดเสียง Buzzer เริ่มต้น
 
   lcd.init();
   lcd.backlight();
@@ -42,14 +104,18 @@ void setup() {
   pinMode(gasDigitalPin, INPUT);
   dht.begin();
 
-  lcd.setCursor(0, 0);
-  lcd.print("Auto's Air Mon.");
-  delay(2000);
-  lcd.clear();
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
 }
 
 void loop() {
-  // --- 1. อ่านค่า PM2.5 ---
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();  
+
+  // อ่านค่าฝุ่น
   digitalWrite(ledPin, LOW);
   delayMicroseconds(samplingTime);
   float voMeasured = analogRead(measurePin);
@@ -61,41 +127,62 @@ void loop() {
   float dustDensity = (0.17 * calcVoltage - 0.1) * 1000;
   if (dustDensity < 0) dustDensity = 0;
 
+  // อ่านค่าอื่นๆ
   float h = dht.readHumidity();
   float t = dht.readTemperature();
   int gasValue = analogRead(gasAnalogPin);
-  int gasAlert = digitalRead(gasDigitalPin);
-
   float gasPercent = (gasValue / 4095.0) * 100.0;
 
-  // --- 2. ตรรกะการแจ้งเตือน ---
-  bool isDanger = (dustDensity > 50.0) || (gasPercent >= gasThreshold);
-
+  // ตรวจสอบอันตราย
+  bool isDanger = (dustDensity > pm25Threshold) || (gasPercent >= gasThreshold) || (t > tempMax || t < tempMin) || (h > humMax || h < humMin);
+  
   if (isDanger) {
-    digitalWrite(ledGreen, LED_OFF); // ปิดไฟเขียว
-    
-    // ไฟแดงกะพริบ 5 ครั้ง
+    digitalWrite(ledGreen, LED_OFF);
     for (int i = 0; i < 5; i++) {
-      digitalWrite(ledRed, LED_ON);  // เปิด
+      digitalWrite(ledRed, LED_ON);
+      digitalWrite(buzzerPin, HIGH); // <--- NEW: เปิดเสียง Buzzer
       delay(200);
-      digitalWrite(ledRed, LED_OFF); // ปิด
+      digitalWrite(ledRed, LED_OFF);
+      digitalWrite(buzzerPin, LOW);  // <--- NEW: ปิดเสียง Buzzer
       delay(200);
+      client.loop();
     }
-    lcd.setCursor(13, 0); lcd.print("!!!"); 
+    lcd.setCursor(13, 0);
+    lcd.print("!!!");
   } else {
-    digitalWrite(ledGreen, LED_ON);  // เปิดไฟเขียว (ปลอดภัย)
-    digitalWrite(ledRed, LED_OFF);   // ปิดไฟแดง
-    lcd.setCursor(13, 0); lcd.print("   ");
-    delay(2000); 
+    digitalWrite(ledGreen, LED_ON);
+    digitalWrite(ledRed, LED_OFF);
+    digitalWrite(buzzerPin, LOW);    // <--- NEW: มั่นใจว่าปิดเสียง Buzzer เมื่อปลอดภัย
+    lcd.setCursor(13, 0);
+    lcd.print("   ");
+    for (int i = 0; i < 20; i++) {
+      delay(100);
+      client.loop();  
+    }
   }
 
-  // --- 3. แสดงผล LCD ---
+  // แสดงผล LCD
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("T:"); lcd.print(t, 1); lcd.print("C H:"); lcd.print(h, 0); lcd.print("%");
+  lcd.print("T:");
+  lcd.print(t, 1);
+  lcd.print("C H:");
+  lcd.print(h, 0);
+  lcd.print("%");
   lcd.setCursor(0, 1);
-  lcd.print("D:"); lcd.print(dustDensity, 0); lcd.print(" G:"); lcd.print(gasPercent); lcd.print("%");
-  
-  Serial.print("PM2.5: "); Serial.print(dustDensity);
-  Serial.print(" | Gas: "); Serial.print(gasPercent); Serial.println("%");
+  lcd.print("D:");
+  lcd.print(dustDensity, 0);
+  lcd.print(" G:");
+  lcd.print(gasPercent);
+  lcd.print("%");
+
+  // ส่งข้อมูลขึ้นเว็บ
+  String payload = "{";
+  payload += "\"temperature\":" + String(t, 1) + ",";
+  payload += "\"humidity\":" + String(h, 0) + ",";
+  payload += "\"pm25\":" + String(dustDensity, 0) + ",";
+  payload += "\"gas\":" + String(gasPercent, 1);
+  payload += "}";
+
+  client.publish(topic_publish, payload.c_str());
 }
