@@ -1,4 +1,6 @@
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+[build]
+  base = "air_monitor_iot"
+  command = "npm run build"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
