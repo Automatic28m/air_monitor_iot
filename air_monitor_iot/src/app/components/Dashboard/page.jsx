@@ -21,22 +21,39 @@ const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDark }) =>
     const tooltipBorder = isDark ? '#262626' : '#e5e7eb';
 
     return (
-        <div className={`h-48 w-full p-2 border mt-6 ${isDark ? 'bg-black border-neutral-800' : 'bg-white border-gray-200'}`}>
+        <div className={`h-56 w-full p-2 border mt-6 ${isDark ? 'bg-black border-neutral-800' : 'bg-white border-gray-200'}`}>
             <p className={`text-xs font-bold mb-2 px-2 flex items-center gap-1 uppercase tracking-widest ${isDark ? 'text-neutral-400' : 'text-gray-400'}`}>
                 <Activity size={12} /> {label} Timeline
             </p>
             <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 15, right: 30, left: 0, bottom: 0 }}>
+                <LineChart data={data} margin={{ top: 15, right: 30, left: 0, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                    <XAxis dataKey="time" hide />
+
+                    <XAxis
+                        dataKey="time"
+                        stroke={textColor}
+                        fontSize={10}
+                        tickMargin={8}
+                        minTickGap={20}
+                        // Format time to hide seconds on the axis for a cleaner look
+                        tickFormatter={(timeStr) => {
+                            if (!timeStr) return '';
+                            const parts = timeStr.split(':');
+                            return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : timeStr;
+                        }}
+                    />
+
                     <YAxis domain={yDomain} fontSize={10} tickCount={5} stroke={textColor} />
                     <Tooltip
                         contentStyle={{ borderRadius: '0px', border: `1px solid ${tooltipBorder}`, boxShadow: 'none', backgroundColor: tooltipBg, color: textColor }}
                         labelStyle={{ display: 'none' }}
                     />
 
-                    <ReferenceLine y={maxVal} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'top', value: 'MAX', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
-                    {showMin && <ReferenceLine y={minVal} stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'bottom', value: 'MIN', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />}
+                    {/* CHANGED: Added dynamic value to the MAX label */}
+                    <ReferenceLine y={maxVal} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'top', value: `MAX: ${maxVal}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
+
+                    {/* CHANGED: Added dynamic value to the MIN label */}
+                    {showMin && <ReferenceLine y={minVal} stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'bottom', value: `MIN: ${minVal}`, fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />}
 
                     <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
                 </LineChart>
@@ -75,7 +92,6 @@ export default function Dashboard() {
                 const res = await fetch('/api/settings');
                 if (res.ok) {
                     const dbSettings = await res.json();
-                    // Strip MongoDB IDs to keep state clean
                     const cleanSettings = {
                         pm25: dbSettings.pm25, gas: dbSettings.gas, tempMax: dbSettings.tempMax,
                         tempMin: dbSettings.tempMin, humMax: dbSettings.humMax, humMin: dbSettings.humMin
@@ -99,7 +115,6 @@ export default function Dashboard() {
         client.on('connect', () => {
             setIsMqttConnected(true);
             client.subscribe('sensor/airmonitor');
-            // NEW: Subscribe to settings to sync across multiple web clients!
             client.subscribe('sensor/airmonitor/settings');
         });
 
@@ -131,7 +146,6 @@ export default function Dashboard() {
                     window.deviceTimeout = setTimeout(() => setIsDeviceOnline(false), 10000);
                 } catch (e) { console.error(e); }
             } else if (topic === 'sensor/airmonitor/settings') {
-                // NEW: If another user updates the settings, instantly update this screen!
                 try {
                     const newSettings = JSON.parse(message.toString());
                     setThresholds(newSettings);
@@ -165,14 +179,12 @@ export default function Dashboard() {
 
             setIsSyncModalOpen(false);
 
-            // 1. INSTANT UPDATE: Update UI and fire MQTT to ESP32 immediately (Don't wait for DB)
             setThresholds(sanitizedThresholds);
             setDraftThresholds(sanitizedThresholds);
             mqttClient.publish('sensor/airmonitor/settings', JSON.stringify(sanitizedThresholds));
 
             showToast("Settings sent to ESP32! Saving to database...");
 
-            // 2. BACKGROUND SAVE: Send to MongoDB asynchronously
             try {
                 const res = await fetch('/api/settings', {
                     method: 'POST',
@@ -183,9 +195,6 @@ export default function Dashboard() {
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);
                 }
-
-                // Optional: Update toast if you want a confirmation it successfully hit the DB
-                console.log("Successfully saved to MongoDB.");
             } catch (error) {
                 console.error("Database Save Error:", error);
                 showToast("⚠️ Hardware updated, but database save failed! Check MongoDB settings.");
