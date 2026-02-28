@@ -165,22 +165,30 @@ export default function Dashboard() {
 
             setIsSyncModalOpen(false);
 
+            // 1. INSTANT UPDATE: Update UI and fire MQTT to ESP32 immediately (Don't wait for DB)
+            setThresholds(sanitizedThresholds);
+            setDraftThresholds(sanitizedThresholds);
+            mqttClient.publish('sensor/airmonitor/settings', JSON.stringify(sanitizedThresholds));
+
+            showToast("Settings sent to ESP32! Saving to database...");
+
+            // 2. BACKGROUND SAVE: Send to MongoDB asynchronously
             try {
-                // 1. Save to MongoDB
-                await fetch('/api/settings', {
+                const res = await fetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(sanitizedThresholds)
                 });
 
-                // 2. Publish to MQTT (Updates hardware AND other connected browsers)
-                setThresholds(sanitizedThresholds);
-                setDraftThresholds(sanitizedThresholds);
-                mqttClient.publish('sensor/airmonitor/settings', JSON.stringify(sanitizedThresholds));
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
 
-                showToast("Settings saved to Database & Synced to ESP32.");
+                // Optional: Update toast if you want a confirmation it successfully hit the DB
+                console.log("Successfully saved to MongoDB.");
             } catch (error) {
-                showToast("Error saving to database.");
+                console.error("Database Save Error:", error);
+                showToast("⚠️ Hardware updated, but database save failed! Check MongoDB settings.");
             }
 
         } else {
