@@ -1,6 +1,6 @@
+"use client";
 import { Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import mqtt from 'mqtt';
 
 export const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDark }) => {
     const showMin = id === 'temp' || id === 'humidity';

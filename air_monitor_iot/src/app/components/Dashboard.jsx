@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock } from 'lucide-react';
 import mqtt from 'mqtt';
-import { SensorGraph } from '../SensorGraph/page';
-import { AlertLog } from '../Alertlog/page';
+import { SensorGraph } from './SensorGraph';
+import { AlertLog } from './AlertLog';
 
 
 
