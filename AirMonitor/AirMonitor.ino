@@ -6,7 +6,7 @@
 #include "DHT.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <ArduinoJson.h>  
+#include <ArduinoJson.h>
 
 const char* ssid = "Automatic iPhone";
 const char* password = "12345678";
@@ -15,14 +15,14 @@ const int mqtt_port = 1883;
 
 // Topics
 const char* topic_publish = "sensor/airmonitor";
-const char* topic_subscribe = "sensor/airmonitor/settings";  
+const char* topic_subscribe = "sensor/airmonitor/settings";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 const int ledGreen = 26;
 const int ledRed = 27;
-const int buzzerPin = 32; // <--- NEW: ประกาศพิน Buzzer
+const int buzzerPin = 32;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define DHTPIN 4
@@ -38,13 +38,14 @@ int sleepTime = 9680;
 const int gasAnalogPin = 34;
 const int gasDigitalPin = 14;
 
-// Thresholds
+// Thresholds & Settings
 float pm25Threshold = 50.0;
 float gasThreshold = 70.0;
 float tempMax = 35.0;
-float tempMin = 18.0;  
+float tempMin = 18.0;
 float humMax = 70.0;
-float humMin = 30.0;  
+float humMin = 30.0;
+bool buzzerEnabled = true;  // <--- NEW: ตัวแปรควบคุมการเปิด/ปิด Buzzer
 
 void setup_wifi() {
   delay(10);
@@ -60,7 +61,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (int i = 0; i < length; i++) message += (char)payload[i];
 
   if (String(topic) == topic_subscribe) {
-    StaticJsonDocument<512> doc;  
+    StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, message);
 
     if (!error) {
@@ -71,7 +72,12 @@ void callback(char* topic, byte* payload, unsigned int length) {
       if (doc.containsKey("humMax")) humMax = doc["humMax"];
       if (doc.containsKey("humMin")) humMin = doc["humMin"];
 
-      Serial.println("✅ Range Updated!");
+      // <--- NEW: รับค่าการเปิด/ปิด Buzzer จาก Web
+      if (doc.containsKey("buzzerEnabled")) buzzerEnabled = doc["buzzerEnabled"];
+
+      Serial.println("✅ Config & Settings Updated!");
+      Serial.print("Buzzer Enabled: ");
+      Serial.println(buzzerEnabled ? "YES" : "NO");
     }
   }
 }
@@ -92,11 +98,11 @@ void setup() {
 
   pinMode(ledGreen, OUTPUT);
   pinMode(ledRed, OUTPUT);
-  pinMode(buzzerPin, OUTPUT); // <--- NEW: ตั้งค่าพิน Buzzer เป็น Output
-  
+  pinMode(buzzerPin, OUTPUT);
+
   digitalWrite(ledGreen, LED_OFF);
   digitalWrite(ledRed, LED_OFF);
-  digitalWrite(buzzerPin, LOW); // <--- NEW: ปิดเสียง Buzzer เริ่มต้น
+  digitalWrite(buzzerPin, LOW);
 
   lcd.init();
   lcd.backlight();
@@ -113,7 +119,7 @@ void loop() {
   if (!client.connected()) {
     reconnect();
   }
-  client.loop();  
+  client.loop();
 
   // อ่านค่าฝุ่น
   digitalWrite(ledPin, LOW);
@@ -135,15 +141,20 @@ void loop() {
 
   // ตรวจสอบอันตราย
   bool isDanger = (dustDensity > pm25Threshold) || (gasPercent >= gasThreshold) || (t > tempMax || t < tempMin) || (h > humMax || h < humMin);
-  
+
   if (isDanger) {
     digitalWrite(ledGreen, LED_OFF);
     for (int i = 0; i < 5; i++) {
       digitalWrite(ledRed, LED_ON);
-      digitalWrite(buzzerPin, HIGH); // <--- NEW: เปิดเสียง Buzzer
+
+      // <--- CHANGED: เช็คสถานะ buzzerEnabled ก่อนให้เสียงดัง
+      if (buzzerEnabled) {
+        digitalWrite(buzzerPin, HIGH);
+      }
+
       delay(200);
       digitalWrite(ledRed, LED_OFF);
-      digitalWrite(buzzerPin, LOW);  // <--- NEW: ปิดเสียง Buzzer
+      digitalWrite(buzzerPin, LOW);  // มั่นใจว่าปิดเสียงทุกรอบ
       delay(200);
       client.loop();
     }
@@ -152,12 +163,12 @@ void loop() {
   } else {
     digitalWrite(ledGreen, LED_ON);
     digitalWrite(ledRed, LED_OFF);
-    digitalWrite(buzzerPin, LOW);    // <--- NEW: มั่นใจว่าปิดเสียง Buzzer เมื่อปลอดภัย
+    digitalWrite(buzzerPin, LOW);
     lcd.setCursor(13, 0);
     lcd.print("   ");
     for (int i = 0; i < 20; i++) {
       delay(100);
-      client.loop();  
+      client.loop();
     }
   }
 

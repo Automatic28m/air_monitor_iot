@@ -6,7 +6,8 @@ const SettingsSchema = new mongoose.Schema({
     tempMax: { type: Number, default: 35 },
     tempMin: { type: Number, default: 18 },
     humMax: { type: Number, default: 70 },
-    humMin: { type: Number, default: 30 }
+    humMin: { type: Number, default: 30 },
+    buzzerEnabled: { type: Boolean, default: true }
 });
 
 export default mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);

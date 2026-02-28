@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Activity, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check } from 'lucide-react';
+import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Activity, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock, Volume2, VolumeX } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import mqtt from 'mqtt';
 
@@ -35,7 +35,6 @@ const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDark }) =>
                         fontSize={10}
                         tickMargin={8}
                         minTickGap={20}
-                        // Format time to hide seconds on the axis for a cleaner look
                         tickFormatter={(timeStr) => {
                             if (!timeStr) return '';
                             const parts = timeStr.split(':');
@@ -49,10 +48,7 @@ const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDark }) =>
                         labelStyle={{ display: 'none' }}
                     />
 
-                    {/* CHANGED: Added dynamic value to the MAX label */}
                     <ReferenceLine y={maxVal} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'top', value: `MAX: ${maxVal}`, fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }} />
-
-                    {/* CHANGED: Added dynamic value to the MIN label */}
                     {showMin && <ReferenceLine y={minVal} stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="5 5" label={{ position: 'bottom', value: `MIN: ${minVal}`, fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }} />}
 
                     <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
@@ -66,7 +62,8 @@ export default function Dashboard() {
     const [isDark, setIsDark] = useState(false);
     const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
-    const [thresholds, setThresholds] = useState({ pm25: 50, gas: 70, tempMax: 35, tempMin: 18, humMax: 70, humMin: 30 });
+    // CHANGED: Added buzzerEnabled to initial state
+    const [thresholds, setThresholds] = useState({ pm25: 50, gas: 70, tempMax: 35, tempMin: 18, humMax: 70, humMin: 30, buzzerEnabled: true });
     const [draftThresholds, setDraftThresholds] = useState({ ...thresholds });
     const [showSettings, setShowSettings] = useState(false);
 
@@ -85,16 +82,17 @@ export default function Dashboard() {
 
     const [mqttClient, setMqttClient] = useState(null);
 
-    // FETCH SETTINGS FROM MONGODB ON MOUNT
     useEffect(() => {
         const fetchInitialSettings = async () => {
             try {
                 const res = await fetch('/api/settings');
                 if (res.ok) {
                     const dbSettings = await res.json();
+                    // CHANGED: Added buzzerEnabled to the fetch mapping
                     const cleanSettings = {
                         pm25: dbSettings.pm25, gas: dbSettings.gas, tempMax: dbSettings.tempMax,
-                        tempMin: dbSettings.tempMin, humMax: dbSettings.humMax, humMin: dbSettings.humMin
+                        tempMin: dbSettings.tempMin, humMax: dbSettings.humMax, humMin: dbSettings.humMin,
+                        buzzerEnabled: dbSettings.buzzerEnabled !== undefined ? dbSettings.buzzerEnabled : true
                     };
                     setThresholds(cleanSettings);
                     setDraftThresholds(cleanSettings);
@@ -168,6 +166,7 @@ export default function Dashboard() {
 
     const executeSync = async () => {
         if (mqttClient && isMqttConnected) {
+            // CHANGED: Added buzzerEnabled to the sanitized output
             const sanitizedThresholds = {
                 pm25: draftThresholds.pm25 === '' ? 50 : draftThresholds.pm25,
                 gas: draftThresholds.gas === '' ? 70 : draftThresholds.gas,
@@ -175,6 +174,7 @@ export default function Dashboard() {
                 tempMin: draftThresholds.tempMin === '' ? 18 : draftThresholds.tempMin,
                 humMax: draftThresholds.humMax === '' ? 70 : draftThresholds.humMax,
                 humMin: draftThresholds.humMin === '' ? 30 : draftThresholds.humMin,
+                buzzerEnabled: draftThresholds.buzzerEnabled
             };
 
             setIsSyncModalOpen(false);
@@ -222,10 +222,10 @@ export default function Dashboard() {
     };
 
     const sensors = [
-        { id: 'pm25', name: 'PM2.5', value: sensorData.pm25, unit: 'µg/m³', icon: Wind, color: isDark ? '#4ade80' : '#22c55e', isWarning: sensorData.pm25 > thresholds.pm25 },
-        { id: 'gas', name: 'Gas Level', value: sensorData.gas, unit: '%', icon: CloudFog, color: isDark ? '#f87171' : '#ef4444', isWarning: sensorData.gas > thresholds.gas },
-        { id: 'temp', name: 'Temperature', value: sensorData.temp, unit: '°C', icon: Thermometer, color: isDark ? '#fb923c' : '#f97316', isWarning: sensorData.temp > thresholds.tempMax || sensorData.temp < thresholds.tempMin },
-        { id: 'humidity', name: 'Humidity', value: sensorData.humidity, unit: '%', icon: Droplets, color: isDark ? '#60a5fa' : '#3b82f6', isWarning: sensorData.humidity > thresholds.humMax || sensorData.humidity < thresholds.humMin },
+        { id: 'pm25', name: 'PM2.5', value: sensorData.pm25, unit: 'µg/m³', icon: Wind, color: isDark ? '#4ade80' : '#22c55e', isWarning: isDeviceOnline && (sensorData.pm25 > thresholds.pm25) },
+        { id: 'gas', name: 'Gas Level', value: sensorData.gas, unit: '%', icon: CloudFog, color: isDark ? '#f87171' : '#ef4444', isWarning: isDeviceOnline && (sensorData.gas > thresholds.gas) },
+        { id: 'temp', name: 'Temperature', value: sensorData.temp, unit: '°C', icon: Thermometer, color: isDark ? '#fb923c' : '#f97316', isWarning: isDeviceOnline && (sensorData.temp > thresholds.tempMax || sensorData.temp < thresholds.tempMin) },
+        { id: 'humidity', name: 'Humidity', value: sensorData.humidity, unit: '%', icon: Droplets, color: isDark ? '#60a5fa' : '#3b82f6', isWarning: isDeviceOnline && (sensorData.humidity > thresholds.humMax || sensorData.humidity < thresholds.humMin) },
     ];
 
     const isSystemCritical = sensors.some(s => s.isWarning);
@@ -306,11 +306,26 @@ export default function Dashboard() {
 
                 {showSettings && (
                     <div className={`mb-8 p-8 border-2 ${cardClass}`}>
-                        <div className={`flex flex-col md:flex-row md:justify-between mb-8 border-b pb-4 gap-4 ${borderClass}`}>
+                        <div className={`flex flex-col md:flex-row md:justify-between items-start md:items-center mb-8 border-b pb-4 gap-4 ${borderClass}`}>
                             <h2 className="text-xl font-black uppercase tracking-widest">Parameter Configuration</h2>
-                            <button onClick={() => setIsSyncModalOpen(true)} className={`flex items-center gap-2 px-6 py-3 font-bold uppercase tracking-widest text-sm transition-colors ${isDark ? 'bg-neutral-200 text-black hover:bg-white' : 'bg-black text-white hover:bg-gray-800'}`}>
-                                <Send size={16} /> Sync to Hardware
-                            </button>
+
+                            {/* CHANGED: Grouped Buzzer Switch and Sync button together */}
+                            <div className="flex items-center gap-4">
+                                <div className={`flex items-center gap-3 px-4 py-2 border ${isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-gray-50 border-gray-200'}`}>
+                                    <span className="text-sm font-bold uppercase tracking-widest">Alert sound</span>
+                                    <button
+                                        onClick={() => setDraftThresholds({ ...draftThresholds, buzzerEnabled: !draftThresholds.buzzerEnabled })}
+                                        className={`relative flex items-center justify-center w-12 h-6 transition-colors border ${draftThresholds.buzzerEnabled ? (isDark ? 'bg-green-600 border-green-500' : 'bg-green-500 border-green-600') : (isDark ? 'bg-neutral-800 border-neutral-700' : 'bg-gray-300 border-gray-400')}`}
+                                    >
+                                        <div className={`absolute w-5 h-5 bg-white transition-transform ${draftThresholds.buzzerEnabled ? 'translate-x-3' : '-translate-x-3'}`}></div>
+                                    </button>
+                                    {draftThresholds.buzzerEnabled ? <Volume2 size={16} className="text-green-500" /> : <VolumeX size={16} className={textMutedClass} />}
+                                </div>
+
+                                <button onClick={() => setIsSyncModalOpen(true)} className={`flex items-center gap-2 px-6 py-3 font-bold uppercase tracking-widest text-sm transition-colors ${isDark ? 'bg-neutral-200 text-black hover:bg-white' : 'bg-black text-white hover:bg-gray-800'}`}>
+                                    <Send size={16} /> Sync to Hardware
+                                </button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {[
@@ -363,11 +378,11 @@ export default function Dashboard() {
                         </div>
                     </div>
 
-                    <div className={`col-span-1 lg:col-span-4 items-center gap-4 p-4 border-2 flex flex-1 justify-center transition-colors ${isSystemCritical ? 'bg-red-600 border-red-800 text-white' : (isDark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-800 border-neutral-900 text-white')}`}>
-                        {isSystemCritical ? <AlertTriangle size={28} /> : <CheckSquare size={28} />}
+                    <div className={`col-span-1 lg:col-span-4 items-center gap-4 p-4 border-2 flex flex-1 justify-center transition-colors ${!isDeviceOnline ? (isDark ? 'bg-neutral-900 border-neutral-800 text-neutral-400' : 'bg-gray-100 border-gray-300 text-gray-500') : isSystemCritical ? 'bg-red-600 border-red-800 text-white' : (isDark ? 'bg-green-600 border-green-800 text-white' : 'bg-green-500 border-green-700 text-white')}`}>
+                        {!isDeviceOnline ? <Clock size={28} /> : isSystemCritical ? <AlertTriangle size={28} /> : <CheckSquare size={28} />}
                         <div>
                             <p className="text-[10px] uppercase font-black tracking-widest opacity-80">Overall Status</p>
-                            <p className="text-xl font-black tracking-widest">{isSystemCritical ? 'CRITICAL ALARM' : 'OPTIMAL'}</p>
+                            <p className="text-xl font-black tracking-widest">{!isDeviceOnline ? 'STANDBY' : isSystemCritical ? 'CRITICAL ALARM' : 'OPTIMAL'}</p>
                         </div>
                     </div>
                 </div>
