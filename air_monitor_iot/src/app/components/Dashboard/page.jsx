@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Activity, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock, Volume2, VolumeX } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock } from 'lucide-react';
 import mqtt from 'mqtt';
 import { SensorGraph } from '../SensorGraph/page';
 import { AlertLog } from '../Alertlog/page';

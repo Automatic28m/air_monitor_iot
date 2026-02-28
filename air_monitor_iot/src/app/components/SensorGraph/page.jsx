@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Activity, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock, Volume2, VolumeX } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import mqtt from 'mqtt';
 
