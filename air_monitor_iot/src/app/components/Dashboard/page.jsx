@@ -47,6 +47,7 @@ const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDark }) =>
 
 export default function Dashboard() {
     const [isDark, setIsDark] = useState(false);
+    const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
     const [thresholds, setThresholds] = useState({ pm25: 50, gas: 70, tempMax: 35, tempMin: 18, humMax: 70, humMin: 30 });
     const [draftThresholds, setDraftThresholds] = useState({ ...thresholds });
@@ -67,6 +68,30 @@ export default function Dashboard() {
 
     const [mqttClient, setMqttClient] = useState(null);
 
+    // FETCH SETTINGS FROM MONGODB ON MOUNT
+    useEffect(() => {
+        const fetchInitialSettings = async () => {
+            try {
+                const res = await fetch('/api/settings');
+                if (res.ok) {
+                    const dbSettings = await res.json();
+                    // Strip MongoDB IDs to keep state clean
+                    const cleanSettings = {
+                        pm25: dbSettings.pm25, gas: dbSettings.gas, tempMax: dbSettings.tempMax,
+                        tempMin: dbSettings.tempMin, humMax: dbSettings.humMax, humMin: dbSettings.humMin
+                    };
+                    setThresholds(cleanSettings);
+                    setDraftThresholds(cleanSettings);
+                }
+            } catch (error) {
+                console.error("Failed to load settings from DB", error);
+            } finally {
+                setIsLoadingSettings(false);
+            }
+        };
+        fetchInitialSettings();
+    }, []);
+
     useEffect(() => {
         const client = mqtt.connect('wss://mqtt-dashboard.com:8884/mqtt');
         setMqttClient(client);
@@ -74,6 +99,8 @@ export default function Dashboard() {
         client.on('connect', () => {
             setIsMqttConnected(true);
             client.subscribe('sensor/airmonitor');
+            // NEW: Subscribe to settings to sync across multiple web clients!
+            client.subscribe('sensor/airmonitor/settings');
         });
 
         client.on('message', (topic, message) => {
@@ -83,37 +110,32 @@ export default function Dashboard() {
                     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
                     const newDataPoint = {
-                        pm25: payload.pm25 || 0,
-                        gas: payload.gas || 0,
-                        temp: payload.temperature || 0,
-                        humidity: payload.humidity || 0,
-                        time: timeStr,
-                        rawDate: new Date().toISOString()
+                        pm25: payload.pm25 || 0, gas: payload.gas || 0,
+                        temp: payload.temperature || 0, humidity: payload.humidity || 0,
+                        time: timeStr, rawDate: new Date().toISOString()
                     };
 
                     setSensorData({ pm25: newDataPoint.pm25, gas: newDataPoint.gas, temp: newDataPoint.temp, humidity: newDataPoint.humidity });
-
                     setHistory(prev => [...prev, newDataPoint].slice(-30));
                     setFullHistory(prev => [...prev, newDataPoint].slice(-8640));
 
                     setStats(prev => {
                         const updateTracker = (key, val) => ({
-                            min: Math.min(prev[key].min, val),
-                            max: Math.max(prev[key].max, val),
-                            sum: prev[key].sum + val,
-                            count: prev[key].count + 1
+                            min: Math.min(prev[key].min, val), max: Math.max(prev[key].max, val), sum: prev[key].sum + val, count: prev[key].count + 1
                         });
-                        return {
-                            pm25: updateTracker('pm25', newDataPoint.pm25),
-                            gas: updateTracker('gas', newDataPoint.gas),
-                            temp: updateTracker('temp', newDataPoint.temp),
-                            humidity: updateTracker('humidity', newDataPoint.humidity)
-                        };
+                        return { pm25: updateTracker('pm25', newDataPoint.pm25), gas: updateTracker('gas', newDataPoint.gas), temp: updateTracker('temp', newDataPoint.temp), humidity: updateTracker('humidity', newDataPoint.humidity) };
                     });
 
                     setIsDeviceOnline(true);
                     clearTimeout(window.deviceTimeout);
                     window.deviceTimeout = setTimeout(() => setIsDeviceOnline(false), 10000);
+                } catch (e) { console.error(e); }
+            } else if (topic === 'sensor/airmonitor/settings') {
+                // NEW: If another user updates the settings, instantly update this screen!
+                try {
+                    const newSettings = JSON.parse(message.toString());
+                    setThresholds(newSettings);
+                    setDraftThresholds(newSettings);
                 } catch (e) { console.error(e); }
             }
         });
@@ -130,9 +152,8 @@ export default function Dashboard() {
         setTimeout(() => setToastMessage(null), 3000);
     };
 
-    const executeSync = () => {
+    const executeSync = async () => {
         if (mqttClient && isMqttConnected) {
-            // Safety check: Fallback to defaults if a user left a box completely empty
             const sanitizedThresholds = {
                 pm25: draftThresholds.pm25 === '' ? 50 : draftThresholds.pm25,
                 gas: draftThresholds.gas === '' ? 70 : draftThresholds.gas,
@@ -142,12 +163,26 @@ export default function Dashboard() {
                 humMin: draftThresholds.humMin === '' ? 30 : draftThresholds.humMin,
             };
 
-            setThresholds(sanitizedThresholds);
-            setDraftThresholds(sanitizedThresholds); // Update input boxes to reflect sanitized versions
-            mqttClient.publish('sensor/airmonitor/settings', JSON.stringify(sanitizedThresholds));
-
             setIsSyncModalOpen(false);
-            showToast("Settings successfully synced to ESP32.");
+
+            try {
+                // 1. Save to MongoDB
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sanitizedThresholds)
+                });
+
+                // 2. Publish to MQTT (Updates hardware AND other connected browsers)
+                setThresholds(sanitizedThresholds);
+                setDraftThresholds(sanitizedThresholds);
+                mqttClient.publish('sensor/airmonitor/settings', JSON.stringify(sanitizedThresholds));
+
+                showToast("Settings saved to Database & Synced to ESP32.");
+            } catch (error) {
+                showToast("Error saving to database.");
+            }
+
         } else {
             setIsSyncModalOpen(false);
             showToast("Error: Not connected to MQTT broker!");
@@ -183,6 +218,10 @@ export default function Dashboard() {
     const textMutedClass = isDark ? 'text-neutral-400' : 'text-gray-500';
     const borderClass = isDark ? 'border-neutral-800' : 'border-gray-200';
 
+    if (isLoadingSettings) {
+        return <div className={`min-h-screen flex items-center justify-center font-bold tracking-widest uppercase ${bgClass}`}>Loading Database...</div>
+    }
+
     return (
         <div className={`min-h-screen p-6 md:p-12 font-sans rounded-none transition-colors duration-300 ${bgClass} relative`}>
 
@@ -200,7 +239,7 @@ export default function Dashboard() {
                     <div className={`w-full max-w-md p-6 border shadow-2xl animate-in zoom-in-95 duration-200 ${isDark ? 'bg-[#0a0a0a] border-neutral-800 text-white' : 'bg-white border-gray-300 text-black'}`}>
                         <h3 className="text-xl font-bold mb-2">Are you absolutely sure?</h3>
                         <p className={`mb-6 text-sm font-medium ${isDark ? 'text-neutral-400' : 'text-gray-600'}`}>
-                            This action cannot be undone. This will permanently push the new thresholds to your ESP32 hardware and overwrite the current safety limits.
+                            This action cannot be undone. This will permanently push the new thresholds to your ESP32 hardware and overwrite the current safety limits in the database.
                         </p>
                         <div className="flex justify-end gap-3">
                             <button
