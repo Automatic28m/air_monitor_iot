@@ -1,15 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Link, Cpu, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock } from 'lucide-react';
+import { Wind, Thermometer, Droplets, CloudFog, Settings, X, Send, Link, Cpu, Wifi, Download, AlertTriangle, CheckSquare, Sun, Moon, Check, Clock } from 'lucide-react';
 import mqtt from 'mqtt';
 import { SensorGraph } from './SensorGraph';
 import { AlertLog } from './AlertLog';
+import { AnalyticsPanel } from './AnalyticsPanel';
 
-
+// --- NEW HELPER: Determine Wi-Fi Quality based on dBm ---
+const getWifiStatus = (rssi) => {
+    if (rssi === 0) return "WAIT";
+    if (rssi >= -60) return "PERFECT";
+    if (rssi >= -70) return "GOOD";
+    if (rssi >= -80) return "FAIR";
+    return "WEAK";
+};
 
 export default function Dashboard() {
-    const [isDark, setIsDark] = useState(false);
+    const [isDark, setIsDark] = useState(true);
     const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
     const [thresholds, setThresholds] = useState({ pm25: 50, gas: 70, tempMax: 35, tempMin: 18, humMax: 70, humMin: 30, buzzerEnabled: true });
@@ -24,7 +32,7 @@ export default function Dashboard() {
 
     const [isMqttConnected, setIsMqttConnected] = useState(false);
     const [isDeviceOnline, setIsDeviceOnline] = useState(false);
-    const [sensorData, setSensorData] = useState({ pm25: 0, gas: 0, temp: 0, humidity: 0 });
+    const [sensorData, setSensorData] = useState({ pm25: 0, gas: 0, temp: 0, humidity: 0, rssi: 0 });
 
     const [history, setHistory] = useState([]);
     const [fullHistory, setFullHistory] = useState([]);
@@ -76,10 +84,11 @@ export default function Dashboard() {
                     const newDataPoint = {
                         pm25: payload.pm25 || 0, gas: payload.gas || 0,
                         temp: payload.temperature || 0, humidity: payload.humidity || 0,
+                        rssi: payload.rssi || 0,
                         time: timeStr, rawDate: new Date().toISOString()
                     };
 
-                    setSensorData({ pm25: newDataPoint.pm25, gas: newDataPoint.gas, temp: newDataPoint.temp, humidity: newDataPoint.humidity });
+                    setSensorData({ pm25: newDataPoint.pm25, gas: newDataPoint.gas, temp: newDataPoint.temp, humidity: newDataPoint.humidity, rssi: newDataPoint.rssi });
                     setHistory(prev => [...prev, newDataPoint].slice(-30));
                     setFullHistory(prev => [...prev, newDataPoint].slice(-8640));
 
@@ -91,7 +100,6 @@ export default function Dashboard() {
                     });
 
                     setIsDeviceOnline(true);
-                    clearTimeout(window.deviceTimeout);
                     clearTimeout(window.deviceTimeout);
                     window.deviceTimeout = setTimeout(() => {
                         setIsDeviceOnline(false);
@@ -152,7 +160,7 @@ export default function Dashboard() {
             };
 
             setIsSyncModalOpen(false);
-            setShowSettings(false); // Auto-close settings panel to save space
+            setShowSettings(false);
 
             setThresholds(sanitizedThresholds);
             setDraftThresholds(sanitizedThresholds);
@@ -206,7 +214,7 @@ export default function Dashboard() {
     if (isLoadingSettings) return <div className={`h-screen w-screen flex items-center justify-center font-bold tracking-widest text-xs uppercase ${bgClass}`}>Initializing...</div>;
 
     return (
-        <div className={`h-screen w-screen overflow-hidden p-2 md:p-4 font-sans rounded-none transition-colors duration-300 flex flex-col ${bgClass} relative`}>
+        <div className={`min-h-screen w-screen overflow-hidden p-2 md:p-4 font-sans rounded-none transition-colors duration-300 flex flex-col ${bgClass} relative`}>
 
             {toastMessage && (
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-2 fade-in duration-200">
@@ -292,9 +300,12 @@ export default function Dashboard() {
                         <Link size={10} />
                         <span className="text-[9px] font-black tracking-widest uppercase">{isMqttConnected ? 'MQTT: OK' : 'MQTT: DROP'}</span>
                     </div>
+                    {/* CHANGED: This section now evaluates the signal quality text dynamically */}
                     <div className={`col-span-3 flex items-center justify-center gap-1.5 p-1.5 border flex-1 ${isDeviceOnline ? (isDark ? 'bg-blue-950/40 border-blue-900 text-blue-500' : 'bg-blue-50 border-blue-300 text-blue-800') : (isDark ? 'bg-neutral-900 border-neutral-800 text-neutral-500' : 'bg-gray-100 border-gray-300 text-gray-500')}`}>
-                        <Cpu size={10} />
-                        <span className="text-[9px] font-black tracking-widest uppercase">{isDeviceOnline ? 'NODE: SYNCED' : 'NODE: WAIT'}</span>
+                        {isDeviceOnline ? <Wifi size={10} /> : <Cpu size={10} />}
+                        <span className="text-[9px] font-black tracking-widest uppercase">
+                            {isDeviceOnline ? `HARDWARE WIFI: ${sensorData.rssi} dBm [${getWifiStatus(sensorData.rssi)}]` : 'NODE: WAIT'}
+                        </span>
                     </div>
                     <div className={`col-span-6 flex items-center justify-center gap-1.5 p-1.5 border flex-[1.5] ${!isDeviceOnline ? (isDark ? 'bg-neutral-900 border-neutral-800 text-neutral-400' : 'bg-gray-100 border-gray-300 text-gray-500') : isSystemCritical ? 'bg-red-600 border-red-800 text-white animate-pulse' : (isDark ? 'bg-green-600 border-green-800 text-white' : 'bg-green-500 border-green-700 text-white')}`}>
                         {!isDeviceOnline ? <Clock size={10} /> : isSystemCritical ? <AlertTriangle size={10} /> : <CheckSquare size={10} />}
@@ -303,7 +314,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* SENSOR GRID - Takes remaining height */}
-                <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+                <div className="grid grid-cols-6 lg:grid-cols-12 gap-2">
                     {sensors.map((sensor) => {
                         const sData = stats[sensor.id];
                         const avg = sData.count > 0 ? (sData.sum / sData.count).toFixed(1) : '--';
@@ -319,7 +330,7 @@ export default function Dashboard() {
                             <div key={sensor.id} className={`col-span-3 h-fit p-2 border ${cardStyle}`}>
                                 {/* Card Header */}
                                 <div className="flex justify-between items-start shrink-0">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center md:gap-4 gap-2">
                                         <div className={`p-1.5 border ${iconBg}`}>
                                             <sensor.icon size={16} />
                                         </div>
@@ -358,6 +369,9 @@ export default function Dashboard() {
                         );
                     })}
                     <div className="col-span-6"><AlertLog isDark={isDark} /></div>
+                    <div className="col-span-6 h-full">
+                        <AnalyticsPanel isDark={isDark} />
+                    </div>
                 </div>
 
             </div>

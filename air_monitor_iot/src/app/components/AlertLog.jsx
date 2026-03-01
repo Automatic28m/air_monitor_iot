@@ -14,9 +14,12 @@ export const AlertLog = ({ isDark }) => {
             try {
                 const res = await fetch(`/api/alerts?page=${page}`);
                 const data = await res.json();
-                setAlerts(data.alerts);
+                setAlerts(data.alerts || []);
                 setTotalPages(data.totalPages || 1);
-            } catch (err) { console.error(err); }
+            } catch (err) {
+                console.error(err);
+                setAlerts([]);
+            }
             setLoading(false);
         };
 
@@ -52,9 +55,9 @@ export const AlertLog = ({ isDark }) => {
 
             {/* Scrollable Alert List */}
             <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
-                {loading && alerts.length === 0 ? (
+                {loading && alerts?.length === 0 ? (
                     <div className={`h-full flex items-center justify-center text-[9px] tracking-widest uppercase ${textMutedClass}`}>Loading...</div>
-                ) : alerts.length === 0 ? (
+                ) : (!alerts || alerts.length === 0) ? (
                     <div className={`h-full flex items-center justify-center text-[9px] tracking-widest uppercase ${textMutedClass}`}>No alerts recorded.</div>
                 ) : (
                     alerts.map((alert) => (

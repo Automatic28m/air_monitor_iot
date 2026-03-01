@@ -187,12 +187,13 @@ void loop() {
   lcd.print(gasPercent);
   lcd.print("%");
 
-  // ส่งข้อมูลขึ้นเว็บ
+  long rssi = WiFi.RSSI();
   String payload = "{";
   payload += "\"temperature\":" + String(t, 1) + ",";
   payload += "\"humidity\":" + String(h, 0) + ",";
   payload += "\"pm25\":" + String(dustDensity, 0) + ",";
-  payload += "\"gas\":" + String(gasPercent, 1);
+  payload += "\"gas\":" + String(gasPercent, 1) + ",";
+  payload += "\"rssi\":" + String(rssi);
   payload += "}";
 
   client.publish(topic_publish, payload.c_str());
