@@ -7,6 +7,18 @@ import { SensorGraph } from './SensorGraph';
 import { AlertLog } from './AlertLog';
 import { AnalyticsPanel } from './AnalyticsPanel';
 import { SlidingNumber } from '@/components/animate-ui/primitives/texts/sliding-number';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogPortal,
+  DialogOverlay,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog"; // Ensure this path matches your shadcn setup
 
 const getWifiStatus = (rssi) => {
     if (rssi === 0) return "WAIT";
@@ -323,46 +335,113 @@ export default function Dashboard() {
                         const valueColor = isWarn ? 'animate-pulse text-red-500' : (isDark ? 'text-white' : 'text-black');
 
                         return (
-                            <div key={sensor.id} className={`col-span-3 h-fit p-2 border ${cardStyle}`}>
-                                <div className="flex justify-between items-start shrink-0">
-                                    <div className="flex items-center md:gap-4 gap-2">
-                                        <div className={`p-1.5 border ${iconBg}`}>
-                                            <sensor.icon size={16} />
+                            <Dialog key={sensor.id}>
+                                {/* Make the entire card a clickable trigger */}
+                                <DialogTrigger asChild>
+                                    <div className={`col-span-3 h-fit p-2 border cursor-pointer hover:opacity-80 transition-opacity ${cardStyle}`}>
+                                        {/* Card Header */}
+                                        <div className="flex justify-between items-start shrink-0">
+                                            <div className="flex items-center md:gap-4 gap-2">
+                                                <div className={`p-1.5 border ${iconBg}`}>
+                                                    <sensor.icon size={16} />
+                                                </div>
+                                                <p className={`text-[8px] md:text-sm font-black uppercase tracking-widest leading-none ${textMutedClass}`}>{sensor.name}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="flex items-baseline justify-end gap-0.5">
+                                                    <SlidingNumber 
+                                                        number={sensor.value} 
+                                                        decimalPlaces={sensor.decimals}
+                                                        className={`text-2xl font-black tracking-tighter leading-none ${valueColor}`}
+                                                    />
+                                                    <span className={`text-[8px] font-bold uppercase ${textMutedClass}`}>{sensor.unit}</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <p className={`text-[8px] md:text-sm font-black uppercase tracking-widest leading-none ${textMutedClass}`}>{sensor.name}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="flex items-baseline justify-end gap-0.5">
-                                            {/* CHANGED: Replaced standard text span with SlidingNumber component */}
-                                            <SlidingNumber
-                                                number={sensor.value}
-                                                decimalPlaces={sensor.decimals}
-                                                className={`text-2xl font-black tracking-tighter leading-none ${valueColor}`}
-                                            />
-                                            <span className={`text-[8px] font-bold uppercase ${textMutedClass}`}>{sensor.unit}</span>
+
+                                        {/* Graph Area */}
+                                        <div className="flex-1 min-h-0 flex flex-col justify-end pointer-events-none">
+                                            <SensorGraph data={history} dataKey={sensor.id === 'temp' ? 'temp' : sensor.id} color={isWarn ? '#ef4444' : sensor.color} label="" thresholds={thresholds} id={sensor.id} isDark={isDark} />
+                                        </div>
+
+                                        {/* Mini Stats Footer */}
+                                        <div className={`grid grid-cols-3 gap-1 pt-1 shrink-0 ${borderClass}`}>
+                                            <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
+                                                <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Min</p>
+                                                <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{min}</p>
+                                            </div>
+                                            <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
+                                                <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Avg</p>
+                                                <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{avg}</p>
+                                            </div>
+                                            <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
+                                                <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Max</p>
+                                                <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-red-400' : 'text-red-600'}`}>{max}</p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                </DialogTrigger>
 
-                                <div className="flex-1 min-h-0 flex flex-col justify-end">
-                                    <SensorGraph data={history} dataKey={sensor.id === 'temp' ? 'temp' : sensor.id} color={isWarn ? '#ef4444' : sensor.color} label="" thresholds={thresholds} id={sensor.id} isDark={isDark} />
-                                </div>
+                                {/* FULL SCREEN MODAL CONTENT */}
+                                <DialogPortal>
+                                    <DialogOverlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
+                                    <DialogContent className={`fixed z-50 justfy-center flex flex-col lg:min-w-5xl h-fit rounded-none! md:mx-5 p-4 md:p-8 [&>button]:hidden  ${bgClass} ${borderClass}`}>
+                                        <DialogHeader className="shrink-0 flex flex-row items-center justify-between border-b pb-4 border-inherit">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`p-3 border ${iconBg}`}>
+                                                    <sensor.icon size={32} />
+                                                </div>
+                                                <div>
+                                                    <DialogTitle className="text-2xl md:text-4xl font-black uppercase tracking-widest text-left">
+                                                        {sensor.name} <span className={textMutedClass}>DETAILS</span>
+                                                    </DialogTitle>
+                                                    <DialogDescription className={`text-xs font-bold uppercase tracking-widest text-left ${textMutedClass}`}>
+                                                        Real-time telemetry and historical tracking
+                                                    </DialogDescription>
+                                                </div>
+                                            </div>
+                                            <DialogClose asChild>
+                                                <button className={`p-3 border transition-colors hover:bg-red-500 hover:text-white hover:border-red-500 ${isDark ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-gray-100 border-gray-300 text-black'}`}>
+                                                    <X size={20} />
+                                                </button>
+                                            </DialogClose>
+                                        </DialogHeader>
 
-                                <div className={`grid grid-cols-3 gap-1 pt-1 shrink-0 ${borderClass}`}>
-                                    <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
-                                        <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Min</p>
-                                        <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{min}</p>
-                                    </div>
-                                    <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
-                                        <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Avg</p>
-                                        <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{avg}</p>
-                                    </div>
-                                    <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
-                                        <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Max</p>
-                                        <p className={`text-[9px] font-mono font-bold leading-none ${isDark ? 'text-red-400' : 'text-red-600'}`}>{max}</p>
-                                    </div>
-                                </div>
-                            </div>
+                                        {/* Massive Data Display */}
+                                        <div className="flex-1 flex flex-col gap-6 mt-6 min-h-0">
+                                            <div className="flex items-baseline gap-2">
+                                                <SlidingNumber 
+                                                    number={sensor.value} 
+                                                    decimalPlaces={sensor.decimals}
+                                                    className={`text-7xl md:text-9xl font-black tracking-tighter ${valueColor}`}
+                                                />
+                                                <span className={`text-2xl md:text-4xl font-bold uppercase ${textMutedClass}`}>{sensor.unit}</span>
+                                            </div>
+                                            
+                                            {/* Enlarged Graph */}
+                                            <div className={`flex-1 min-h-0 border p-4 ${isDark ? 'bg-black/50 border-neutral-800' : 'bg-white border-gray-200'}`}>
+                                                <SensorGraph data={history} dataKey={sensor.id === 'temp' ? 'temp' : sensor.id} color={isWarn ? '#ef4444' : sensor.color} label="LIVE FEED (30s WINDOW)" thresholds={thresholds} id={sensor.id} isDark={isDark} />
+                                            </div>
+
+                                            {/* Enlarged Stats Footer */}
+                                            <div className={`grid grid-cols-3 gap-4 shrink-0 border-t pt-6 border-inherit`}>
+                                                <div className="text-center">
+                                                    <p className={`text-xs md:text-sm font-black uppercase ${textMutedClass}`}>Session Min</p>
+                                                    <p className={`text-xl md:text-3xl font-mono font-bold leading-none mt-1 ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{min}</p>
+                                                </div>
+                                                <div className="text-center border-x border-inherit">
+                                                    <p className={`text-xs md:text-sm font-black uppercase ${textMutedClass}`}>Session Avg</p>
+                                                    <p className={`text-xl md:text-3xl font-mono font-bold leading-none mt-1 ${isDark ? 'text-neutral-300' : 'text-neutral-600'}`}>{avg}</p>
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className={`text-xs md:text-sm font-black uppercase ${textMutedClass}`}>Session Max</p>
+                                                    <p className={`text-xl md:text-3xl font-mono font-bold leading-none mt-1 ${isDark ? 'text-red-400' : 'text-red-600'}`}>{max}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </DialogContent>
+                                </DialogPortal>
+                            </Dialog>
                         );
                     })}
                     <div className="col-span-6"><AlertLog isDark={isDark} /></div>

@@ -5,6 +5,7 @@ import { AlertOctagon, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SlidingNumber } from '@/components/animate-ui/primitives/texts/sliding-number';
 
+
 export const AnalyticsPanel = ({ isDark }) => {
     const [stats, setStats] = useState({ todayCount: 0, history: [] });
     const [loading, setLoading] = useState(true);
@@ -63,7 +64,7 @@ export const AnalyticsPanel = ({ isDark }) => {
                     </h3>
                 </div>
 
-                <div className="flex-1 min-h-0">
+                <div className="flex-1 min-h-50">
                     {loading && stats.history.length === 0 ? (
                         <div className={`h-full flex items-center justify-center text-[9px] tracking-widest uppercase ${textMutedClass}`}>Loading...</div>
                     ) : (
@@ -81,7 +82,6 @@ export const AnalyticsPanel = ({ isDark }) => {
                                 <Bar dataKey="alerts" name="Alerts" fill="#ef4444" radius={[2, 2, 0, 0]} maxBarSize={40} />
                             </BarChart>
                         </ResponsiveContainer>
-                        // bg-gray-50 border-gray-200 text-gray-700
                     )}
                 </div>
             </div>

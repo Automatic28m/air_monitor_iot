@@ -18,7 +18,7 @@ export const SensorGraph = ({ data, dataKey, color, label, thresholds, id, isDar
     const tooltipBorder = isDark ? '#262626' : '#e5e7eb';
 
     return (
-        <div className={`h-28 w-full p-1 border mt-2 ${isDark ? 'bg-black border-neutral-800' : 'bg-white border-gray-200'}`}>
+        <div className={`h-28 w-full p-1 border mt-1 ${isDark ? 'bg-black border-neutral-800' : 'bg-white border-gray-200'}`}>
             <p className={`text-[9px] font-bold mb-1 px-1 flex items-center gap-1 uppercase tracking-widest ${isDark ? 'text-neutral-500' : 'text-gray-400'}`}>
                 <Activity size={10} /> {label}
             </p>
