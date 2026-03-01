@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { AlertOctagon, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { SlidingNumber } from '@/components/animate-ui/primitives/texts/sliding-number';
 
 export const AnalyticsPanel = ({ isDark }) => {
     const [stats, setStats] = useState({ todayCount: 0, history: [] });
@@ -43,7 +44,12 @@ export const AnalyticsPanel = ({ isDark }) => {
                     <div>
                         <p className={`text-[10px] font-black uppercase tracking-widest ${textMutedClass}`}>Alerts Triggered Today</p>
                         <p className={`text-3xl font-black leading-none tracking-tighter ${stats.todayCount > 0 ? 'text-red-500' : isDark ? 'text-white' : 'text-black'}`}>
-                            {loading ? '--' : stats.todayCount}
+                            {loading ? '--' :
+                                <SlidingNumber
+                                    number={stats.todayCount}
+                                    className={`text-2xl font-black tracking-tighter leading-none`}
+                                />
+                            }
                         </p>
                     </div>
                 </div>

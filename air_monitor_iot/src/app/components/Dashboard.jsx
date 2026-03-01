@@ -6,8 +6,8 @@ import mqtt from 'mqtt';
 import { SensorGraph } from './SensorGraph';
 import { AlertLog } from './AlertLog';
 import { AnalyticsPanel } from './AnalyticsPanel';
+import { SlidingNumber } from '@/components/animate-ui/primitives/texts/sliding-number';
 
-// --- NEW HELPER: Determine Wi-Fi Quality based on dBm ---
 const getWifiStatus = (rssi) => {
     if (rssi === 0) return "WAIT";
     if (rssi >= -60) return "PERFECT";
@@ -197,11 +197,12 @@ export default function Dashboard() {
         document.body.removeChild(link);
     };
 
+    // CHANGED: Added `decimals` property to each sensor configuration
     const sensors = [
-        { id: 'pm25', name: 'PM2.5', value: sensorData.pm25, unit: 'µg/m³', icon: Wind, color: isDark ? '#4ade80' : '#22c55e', isWarning: isDeviceOnline && (sensorData.pm25 > thresholds.pm25) },
-        { id: 'gas', name: 'Gas Level', value: sensorData.gas, unit: '%', icon: CloudFog, color: isDark ? '#f87171' : '#ef4444', isWarning: isDeviceOnline && (sensorData.gas > thresholds.gas) },
-        { id: 'temp', name: 'Temperature', value: sensorData.temp, unit: '°C', icon: Thermometer, color: isDark ? '#fb923c' : '#f97316', isWarning: isDeviceOnline && (sensorData.temp > thresholds.tempMax || sensorData.temp < thresholds.tempMin) },
-        { id: 'humidity', name: 'Humidity', value: sensorData.humidity, unit: '%', icon: Droplets, color: isDark ? '#60a5fa' : '#3b82f6', isWarning: isDeviceOnline && (sensorData.humidity > thresholds.humMax || sensorData.humidity < thresholds.humMin) },
+        { id: 'pm25', name: 'PM2.5', value: sensorData.pm25, unit: 'µg/m³', icon: Wind, color: isDark ? '#4ade80' : '#22c55e', isWarning: isDeviceOnline && (sensorData.pm25 > thresholds.pm25), decimals: 0 },
+        { id: 'gas', name: 'Gas Level', value: sensorData.gas, unit: '%', icon: CloudFog, color: isDark ? '#f87171' : '#ef4444', isWarning: isDeviceOnline && (sensorData.gas > thresholds.gas), decimals: 1 },
+        { id: 'temp', name: 'Temperature', value: sensorData.temp, unit: '°C', icon: Thermometer, color: isDark ? '#fb923c' : '#f97316', isWarning: isDeviceOnline && (sensorData.temp > thresholds.tempMax || sensorData.temp < thresholds.tempMin), decimals: 1 },
+        { id: 'humidity', name: 'Humidity', value: sensorData.humidity, unit: '%', icon: Droplets, color: isDark ? '#60a5fa' : '#3b82f6', isWarning: isDeviceOnline && (sensorData.humidity > thresholds.humMax || sensorData.humidity < thresholds.humMin), decimals: 0 },
     ];
 
     const isSystemCritical = sensors.some(s => s.isWarning);
@@ -238,9 +239,8 @@ export default function Dashboard() {
                 </div>
             )}
 
-            <div className="flex-1 flex flex-col max-w-[1400px] mx-auto w-full gap-2">
+            <div className="flex-1 flex flex-col mx-auto w-full gap-2">
 
-                {/* COMPACT HEADER */}
                 <header className={`flex items-center justify-between border-b pb-2 ${borderClass} shrink-0`}>
                     <div className="flex items-baseline gap-2">
                         <h1 className="text-xl md:text-2xl font-black tracking-tighter uppercase">Air Monitor <span className={isDark ? "text-neutral-600" : "text-gray-400"}>PRO</span></h1>
@@ -258,7 +258,6 @@ export default function Dashboard() {
                     </div>
                 </header>
 
-                {/* SLIDING SETTINGS PANEL */}
                 {showSettings && (
                     <div className={`p-3 border shrink-0 animate-in slide-in-from-top-2 ${cardClass}`}>
                         <div className="flex justify-between items-center mb-2">
@@ -294,17 +293,15 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* COMPACT STATUS BAR */}
                 <div className="grid grid-cols-12 gap-2 shrink-0">
                     <div className={`col-span-3 flex items-center justify-center gap-1.5 p-1.5 border flex-1 ${isMqttConnected ? (isDark ? 'bg-green-950/40 border-green-900 text-green-500' : 'bg-green-50 border-green-300 text-green-800') : (isDark ? 'bg-red-950/40 border-red-900 text-red-500' : 'bg-red-50 border-red-300 text-red-800')}`}>
                         <Link size={10} />
                         <span className="text-[9px] font-black tracking-widest uppercase">{isMqttConnected ? 'MQTT: OK' : 'MQTT: DROP'}</span>
                     </div>
-                    {/* CHANGED: This section now evaluates the signal quality text dynamically */}
                     <div className={`col-span-3 flex items-center justify-center gap-1.5 p-1.5 border flex-1 ${isDeviceOnline ? (isDark ? 'bg-blue-950/40 border-blue-900 text-blue-500' : 'bg-blue-50 border-blue-300 text-blue-800') : (isDark ? 'bg-neutral-900 border-neutral-800 text-neutral-500' : 'bg-gray-100 border-gray-300 text-gray-500')}`}>
                         {isDeviceOnline ? <Wifi size={10} /> : <Cpu size={10} />}
                         <span className="text-[9px] font-black tracking-widest uppercase">
-                            {isDeviceOnline ? `HARDWARE WIFI: ${sensorData.rssi} dBm [${getWifiStatus(sensorData.rssi)}]` : 'NODE: WAIT'}
+                            {isDeviceOnline ? `WIFI: ${sensorData.rssi} dBm [${getWifiStatus(sensorData.rssi)}]` : 'NODE: WAIT'}
                         </span>
                     </div>
                     <div className={`col-span-6 flex items-center justify-center gap-1.5 p-1.5 border flex-[1.5] ${!isDeviceOnline ? (isDark ? 'bg-neutral-900 border-neutral-800 text-neutral-400' : 'bg-gray-100 border-gray-300 text-gray-500') : isSystemCritical ? 'bg-red-600 border-red-800 text-white animate-pulse' : (isDark ? 'bg-green-600 border-green-800 text-white' : 'bg-green-500 border-green-700 text-white')}`}>
@@ -313,7 +310,6 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* SENSOR GRID - Takes remaining height */}
                 <div className="grid grid-cols-6 lg:grid-cols-12 gap-2">
                     {sensors.map((sensor) => {
                         const sData = stats[sensor.id];
@@ -328,7 +324,6 @@ export default function Dashboard() {
 
                         return (
                             <div key={sensor.id} className={`col-span-3 h-fit p-2 border ${cardStyle}`}>
-                                {/* Card Header */}
                                 <div className="flex justify-between items-start shrink-0">
                                     <div className="flex items-center md:gap-4 gap-2">
                                         <div className={`p-1.5 border ${iconBg}`}>
@@ -338,18 +333,21 @@ export default function Dashboard() {
                                     </div>
                                     <div className="text-right">
                                         <div className="flex items-baseline justify-end gap-0.5">
-                                            <span className={`text-2xl font-black tracking-tighter leading-none ${valueColor}`}>{sensor.value}</span>
+                                            {/* CHANGED: Replaced standard text span with SlidingNumber component */}
+                                            <SlidingNumber
+                                                number={sensor.value}
+                                                decimalPlaces={sensor.decimals}
+                                                className={`text-2xl font-black tracking-tighter leading-none ${valueColor}`}
+                                            />
                                             <span className={`text-[8px] font-bold uppercase ${textMutedClass}`}>{sensor.unit}</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Graph Area */}
                                 <div className="flex-1 min-h-0 flex flex-col justify-end">
                                     <SensorGraph data={history} dataKey={sensor.id === 'temp' ? 'temp' : sensor.id} color={isWarn ? '#ef4444' : sensor.color} label="" thresholds={thresholds} id={sensor.id} isDark={isDark} />
                                 </div>
 
-                                {/* Mini Stats Footer */}
                                 <div className={`grid grid-cols-3 gap-1 pt-1 shrink-0 ${borderClass}`}>
                                     <div className={`p-0.5 text-center border ${isDark ? 'bg-neutral-900/50 border-neutral-800' : 'bg-gray-50 border-gray-100'}`}>
                                         <p className={`text-[7px] font-black uppercase ${textMutedClass}`}>Min</p>
@@ -365,7 +363,6 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             </div>
-
                         );
                     })}
                     <div className="col-span-6"><AlertLog isDark={isDark} /></div>
