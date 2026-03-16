@@ -8,18 +8,23 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
+// ==========================================
+// 1. การตั้งค่า Network & MQTT
+// ==========================================
 const char* ssid = "Automatic iPhone";
 const char* password = "12345678";
 const char* mqtt_server = "mqtt-dashboard.com";
 const int mqtt_port = 1883;
 
-// Topics
 const char* topic_publish = "sensor/airmonitor";
 const char* topic_subscribe = "sensor/airmonitor/settings";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+// ==========================================
+// 2. กำหนดขา Pin และ อุปกรณ์
+// ==========================================
 const int ledGreen = 26;
 const int ledRed = 27;
 const int buzzerPin = 32;
@@ -31,22 +36,44 @@ DHT dht(DHTPIN, DHTTYPE);
 
 const int measurePin = 35;
 const int ledPin = 2;
+const int gasAnalogPin = 34;
+const int gasDigitalPin = 14;
+
+// ==========================================
+// 3. ตัวแปรตั้งค่าการทำงาน (Thresholds & Timings)
+// ==========================================
 int samplingTime = 280;
 int deltaTime = 40;
 int sleepTime = 9680;
 
-const int gasAnalogPin = 34;
-const int gasDigitalPin = 14;
-
-// Thresholds & Settings
 float pm25Threshold = 50.0;
 float gasThreshold = 70.0;
 float tempMax = 35.0;
 float tempMin = 18.0;
 float humMax = 70.0;
 float humMin = 30.0;
-bool buzzerEnabled = true;  // <--- NEW: ตัวแปรควบคุมการเปิด/ปิด Buzzer
+bool buzzerEnabled = true;
 
+// ==========================================
+// 4. State Machine Definitions & Global Data
+// ==========================================
+const int SENSOR_READ = 0;
+const int DANGER_CHECK = 1;
+const int ALARM_ACTIVE = 2;
+const int NORMAL_ACTIVE = 3;
+const int DISPLAY_PUBLISH = 4;
+int state;
+
+// ตัวแปรเก็บค่าเซ็นเซอร์เพื่อส่งต่อระหว่าง State
+float t = 0.0;
+float h = 0.0;
+float dustDensity = 0.0;
+float gasPercent = 0.0;
+bool isDanger = false;
+
+// ==========================================
+// ฟังก์ชันจัดการ WiFi & MQTT
+// ==========================================
 void setup_wifi() {
   delay(10);
   WiFi.begin(ssid, password);
@@ -55,7 +82,6 @@ void setup_wifi() {
   }
 }
 
-// ฟังก์ชันรับข้อมูลจาก NextJS
 void callback(char* topic, byte* payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) message += (char)payload[i];
@@ -71,8 +97,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
       if (doc.containsKey("tempMin")) tempMin = doc["tempMin"];
       if (doc.containsKey("humMax")) humMax = doc["humMax"];
       if (doc.containsKey("humMin")) humMin = doc["humMin"];
-
-      // <--- NEW: รับค่าการเปิด/ปิด Buzzer จาก Web
       if (doc.containsKey("buzzerEnabled")) buzzerEnabled = doc["buzzerEnabled"];
 
       Serial.println("✅ Config & Settings Updated!");
@@ -93,12 +117,17 @@ void reconnect() {
   }
 }
 
+// ==========================================
+// Setup
+// ==========================================
 void setup() {
   Serial.begin(115200);
 
   pinMode(ledGreen, OUTPUT);
   pinMode(ledRed, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+  pinMode(gasDigitalPin, INPUT);
 
   digitalWrite(ledGreen, LED_OFF);
   digitalWrite(ledRed, LED_OFF);
@@ -106,95 +135,127 @@ void setup() {
 
   lcd.init();
   lcd.backlight();
-  pinMode(ledPin, OUTPUT);
-  pinMode(gasDigitalPin, INPUT);
   dht.begin();
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
+
+  state = SENSOR_READ;
 }
 
+// ==========================================
+// Main Loop (State Machine)
+// ==========================================
 void loop() {
   if (!client.connected()) {
     reconnect();
   }
   client.loop();
 
-  // อ่านค่าฝุ่น
-  digitalWrite(ledPin, LOW);
-  delayMicroseconds(samplingTime);
-  float voMeasured = analogRead(measurePin);
-  delayMicroseconds(deltaTime);
-  digitalWrite(ledPin, HIGH);
-  delayMicroseconds(sleepTime);
+  switch (state) {
 
-  float calcVoltage = voMeasured * (3.3 / 4095.0);
-  float dustDensity = (0.17 * calcVoltage - 0.1) * 1000;
-  if (dustDensity < 0) dustDensity = 0;
+    case SENSOR_READ:
+      {
+        digitalWrite(ledPin, LOW);
+        delayMicroseconds(samplingTime);
+        float voMeasured = analogRead(measurePin);
+        delayMicroseconds(deltaTime);
+        digitalWrite(ledPin, HIGH);
+        delayMicroseconds(sleepTime);
 
-  // อ่านค่าอื่นๆ
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  int gasValue = analogRead(gasAnalogPin);
-  float gasPercent = (gasValue / 4095.0) * 100.0;
+        float calcVoltage = voMeasured * (3.3 / 4095.0);
+        dustDensity = (0.17 * calcVoltage - 0.1) * 1000;
+        if (dustDensity < 0) dustDensity = 0;
 
-  // ตรวจสอบอันตราย
-  bool isDanger = (dustDensity > pm25Threshold) || (gasPercent >= gasThreshold) || (t > tempMax || t < tempMin) || (h > humMax || h < humMin);
+        h = dht.readHumidity();
+        t = dht.readTemperature();
+        int gasValue = analogRead(gasAnalogPin);
+        gasPercent = (gasValue / 4095.0) * 100.0;
 
-  if (isDanger) {
-    digitalWrite(ledGreen, LED_OFF);
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(ledRed, LED_ON);
-
-      // <--- CHANGED: เช็คสถานะ buzzerEnabled ก่อนให้เสียงดัง
-      if (buzzerEnabled) {
-        digitalWrite(buzzerPin, HIGH);
+        state = DANGER_CHECK;
       }
+      break;
 
-      delay(200);
-      digitalWrite(ledRed, LED_OFF);
-      digitalWrite(buzzerPin, LOW);  // มั่นใจว่าปิดเสียงทุกรอบ
-      delay(200);
-      client.loop();
-    }
-    lcd.setCursor(13, 0);
-    lcd.print("!!!");
-  } else {
-    digitalWrite(ledGreen, LED_ON);
-    digitalWrite(ledRed, LED_OFF);
-    digitalWrite(buzzerPin, LOW);
-    lcd.setCursor(13, 0);
-    lcd.print("   ");
-    for (int i = 0; i < 20; i++) {
-      delay(100);
-      client.loop();
-    }
+    case DANGER_CHECK:
+      {
+        isDanger = (dustDensity > pm25Threshold) || (gasPercent >= gasThreshold) || (t > tempMax || t < tempMin) || (h > humMax || h < humMin);
+
+        if (isDanger) {
+          state = ALARM_ACTIVE;
+        } else {
+          state = NORMAL_ACTIVE;
+        }
+      }
+      break;
+
+    case ALARM_ACTIVE:
+      {
+        digitalWrite(ledGreen, LED_OFF);
+        for (int i = 0; i < 5; i++) {
+          digitalWrite(ledRed, LED_ON);
+          if (buzzerEnabled) {
+            digitalWrite(buzzerPin, HIGH);
+          }
+          delay(200);
+          digitalWrite(ledRed, LED_OFF);
+          digitalWrite(buzzerPin, LOW);
+          delay(200);
+          client.loop();
+        }
+        lcd.setCursor(13, 0);
+        lcd.print("!!!");
+
+        state = DISPLAY_PUBLISH;
+      }
+      break;
+
+    case NORMAL_ACTIVE:
+      {
+        digitalWrite(ledGreen, LED_ON);
+        digitalWrite(ledRed, LED_OFF);
+        digitalWrite(buzzerPin, LOW);
+        lcd.setCursor(13, 0);
+        lcd.print("   ");
+
+        for (int i = 0; i < 20; i++) {
+          delay(100);
+          client.loop();
+        }
+
+        state = DISPLAY_PUBLISH;
+      }
+      break;
+
+    case DISPLAY_PUBLISH:
+      {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("T:");
+        lcd.print(t, 1);
+        lcd.print("C H:");
+        lcd.print(h, 0);
+        lcd.print("%");
+        lcd.setCursor(0, 1);
+        lcd.print("PM:");
+        lcd.print(dustDensity, 0);
+        lcd.print(" G:");
+        lcd.print(gasPercent);
+        lcd.print("%");
+
+        long rssi = WiFi.RSSI();
+        String payload = "{";
+        payload += "\"temperature\":" + String(t, 1) + ",";
+        payload += "\"humidity\":" + String(h, 0) + ",";
+        payload += "\"pm25\":" + String(dustDensity, 0) + ",";
+        payload += "\"gas\":" + String(gasPercent, 1) + ",";
+        payload += "\"rssi\":" + String(rssi);
+        payload += "}";
+
+        client.publish(topic_publish, payload.c_str());
+
+        state = SENSOR_READ;
+      }
+      break;
   }
-
-  // แสดงผล LCD
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("T:");
-  lcd.print(t, 1);
-  lcd.print("C H:");
-  lcd.print(h, 0);
-  lcd.print("%");
-  lcd.setCursor(0, 1);
-  lcd.print("D:");
-  lcd.print(dustDensity, 0);
-  lcd.print(" G:");
-  lcd.print(gasPercent);
-  lcd.print("%");
-
-  long rssi = WiFi.RSSI();
-  String payload = "{";
-  payload += "\"temperature\":" + String(t, 1) + ",";
-  payload += "\"humidity\":" + String(h, 0) + ",";
-  payload += "\"pm25\":" + String(dustDensity, 0) + ",";
-  payload += "\"gas\":" + String(gasPercent, 1) + ",";
-  payload += "\"rssi\":" + String(rssi);
-  payload += "}";
-
-  client.publish(topic_publish, payload.c_str());
 }
