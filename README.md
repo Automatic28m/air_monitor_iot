@@ -30,6 +30,26 @@ Stay connected to your warehouse environment from anywhere in the world.
 
 ---
 
+## 📦 Hardware Overview
+
+The **Air Monitor Pro** hardware is housed in a rugged, industrial-grade enclosure designed for wall-mounting. It features a modular internal layout for easy maintenance and clear external indicators for immediate status checks.
+
+### Device Perspectives
+<p align="center">
+  <img src="images/device_front.png" width="30%" alt="Front View">
+  <img src="images/device_side_left.png" width="30%" alt="Side Left View">
+  <img src="images/device_side_right.png" width="30%" alt="Side Right View">
+</p>
+
+### Build Quality
+The device is designed with a professional aesthetic that fits seamlessly into both warehouse aisles and clean-room laboratories.
+<p align="center">
+  <img src="images/device_front_2.png" width="45%" alt="Perspective View">
+  <img src="images/device_open.png" width="45%" alt="Internal Layout Preview">
+</p>
+
+---
+
 ## 🛠️ Technology Stack
 
 ### **Software & Cloud**
